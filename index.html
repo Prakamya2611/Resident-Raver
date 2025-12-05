@@ -1,306 +1,254 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Resident Raver</title>
+  <meta charset="UTF-8">
+  <title>Resident Raver – Corridor Level</title>
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: Arial, Helvetica, sans-serif;
-    }
-
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background: #05030f;
-      color: #fff;
+      background: #000;
       display: flex;
-      align-items: center;
       justify-content: center;
+      align-items: center;
       height: 100vh;
+      font-family: Arial, sans-serif;
+      color: #fff;
     }
-
-    #gameBox {
-      text-align: center;
-    }
-
-    h1 {
-      margin-bottom: 4px;
-    }
-
-    #subtitle {
-      font-size: 13px;
-      margin-bottom: 8px;
-      color: #ccc;
-    }
-
+    #wrapper { text-align: center; }
     canvas {
-      background: radial-gradient(circle at top, #3a1f5d 0, #050510 60%);
-      border: 3px solid #3f3fff;
-      border-radius: 10px;
+      border: 2px solid #333;
       display: block;
-      margin: 0 auto 8px auto;
+      margin: 8px auto;
+      background: #000;
     }
-
-    #hud {
-      margin-bottom: 6px;
-      font-size: 14px;
-    }
-
-    #controls {
-      font-size: 12px;
-      color: #bbb;
-      margin-top: 4px;
-    }
-
-    #startBtn {
-      background: linear-gradient(90deg, #ff0077, #ffe600);
-      padding: 8px 20px;
-      border: none;
-      border-radius: 20px;
-      font-weight: bold;
-      cursor: pointer;
-      margin-bottom: 4px;
-    }
-
-    #msg {
-      font-size: 12px;
-      color: #ffea00;
-      min-height: 16px;
-      margin-top: 2px;
-    }
+    #info { font-size: 13px; color: #ccc; }
   </style>
 </head>
-
 <body>
-  <div id="gameBox">
-    <h1>Resident Raver</h1>
-    <div id="subtitle">Collect beats and avoid angry neighbours!</div>
+<div id="wrapper">
+  <h2>Resident Raver</h2>
+  <div id="info">Controls: ← → move, ↑ / Space jump</div>
+  <canvas id="game" width="800" height="300"></canvas>
+</div>
 
-    <canvas id="game" width="480" height="640"></canvas>
+<script>
+// ====== CANVAS SETUP ======
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-    <div id="hud">
-      Score: <span id="score">0</span>
-      &nbsp; | &nbsp;
-      Best: <span id="best">0</span>
-    </div>
+// ====== TILE MAP (simple dorm corridor) ======
+// 0 = empty, 1 = wall/solid, 2 = floor, 3 = door, 4 = window
+const TILE = 32;
+const LEVEL_ROWS = 10;
+const LEVEL_COLS = 30;
 
-    <button id="startBtn">Start Game</button>
-    <div id="controls">Controls: ← → arrows, SPACE = Dash</div>
-    <div id="msg"></div>
-  </div>
+// a simple map roughly like the screenshot
+const map = [
+  // 0         5         10        15        20        25
+  //012345678901234567890123456789
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1], // top bricks
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+  [1,0,0,0,0,3,0,0,0,0,0,3,0,0,0,0,0,4,0,0,0,3,0,0,0,0,0,0,0,1],
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+  [1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1], // floor
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]  // bottom solid
+];
 
-  <script>
-    const canvas = document.getElementById("game");
-    const ctx = canvas.getContext("2d");
+// which tiles are solid (collide)
+function isSolidTile(code) {
+  return code === 1 || code === 2; // walls + floor
+}
 
-    const scoreEl = document.getElementById("score");
-    const bestEl = document.getElementById("best");
-    const startBtn = document.getElementById("startBtn");
-    const msg = document.getElementById("msg");
+// ====== PLAYER ======
+const player = {
+  x: 60,
+  y: 180,
+  w: 22,
+  h: 30,
+  vx: 0,
+  vy: 0,
+  speed: 2.5,
+  jumpForce: -7,
+  onGround: false,
+};
 
-    // --- Player setup ---
-    const player = {
-      x: canvas.width / 2 - 20,
-      y: canvas.height - 70,
-      w: 40,
-      h: 40,
-      speed: 4,
-      dashSpeed: 8
-    };
+const GRAVITY = 0.35;
+const FRICTION = 0.8;
 
-    let beats = [];    // good items
-    let enemies = [];  // bad items
-    let keys = {};
-    let score = 0;
-    let best = Number(localStorage.getItem("rr_best") || 0);
-    bestEl.textContent = best;
+// ====== INPUT ======
+const keys = {};
+window.addEventListener("keydown", e => {
+  keys[e.code] = true;
+});
+window.addEventListener("keyup", e => {
+  keys[e.code] = false;
+});
 
-    let running = false;
+// ====== COLLISION HELPERS ======
+function getTileAtPixel(px, py) {
+  const tx = Math.floor(px / TILE);
+  const ty = Math.floor(py / TILE);
+  if (tx < 0 || ty < 0 || tx >= LEVEL_COLS || ty >= LEVEL_ROWS) return 1; // outside = solid
+  return map[ty][tx];
+}
 
-    // --- Input handling ---
-    document.addEventListener("keydown", (e) => {
-      if (["ArrowLeft", "ArrowRight", "Space"].includes(e.code)) {
-        e.preventDefault();
-      }
-      keys[e.code] = true;
-    });
-
-    document.addEventListener("keyup", (e) => {
-      keys[e.code] = false;
-    });
-
-    // --- Game control ---
-    startBtn.addEventListener("click", () => {
-      startGame();
-    });
-
-    function startGame() {
-      score = 0;
-      beats = [];
-      enemies = [];
-      player.x = canvas.width / 2 - player.w / 2;
-      player.y = canvas.height - 70;
-      running = true;
-      scoreEl.textContent = score;
-      msg.textContent = "";
+function resolveCollisions(obj) {
+  // Horizontal
+  obj.x += obj.vx;
+  if (obj.vx > 0) {
+    // moving right
+    const right = obj.x + obj.w;
+    const top = obj.y + 2;
+    const bottom = obj.y + obj.h - 2;
+    if (isSolidTile(getTileAtPixel(right, top)) || isSolidTile(getTileAtPixel(right, bottom))) {
+      obj.x = Math.floor((right) / TILE) * TILE - obj.w - 0.01;
+      obj.vx = 0;
     }
-
-    // --- Helpers ---
-    function spawnBeat() {
-      beats.push({
-        x: Math.random() * (canvas.width - 20),
-        y: -20,
-        r: 10,
-        speed: 2 + Math.random() * 2
-      });
+  } else if (obj.vx < 0) {
+    // moving left
+    const left = obj.x;
+    const top = obj.y + 2;
+    const bottom = obj.y + obj.h - 2;
+    if (isSolidTile(getTileAtPixel(left, top)) || isSolidTile(getTileAtPixel(left, bottom))) {
+      obj.x = Math.floor(left / TILE + 1) * TILE + 0.01;
+      obj.vx = 0;
     }
+  }
 
-    function spawnEnemy() {
-      enemies.push({
-        x: Math.random() * (canvas.width - 24),
-        y: -24,
-        size: 24,
-        speed: 2.5 + Math.random() * 2
-      });
+  // Vertical
+  obj.y += obj.vy;
+  obj.onGround = false;
+  if (obj.vy > 0) {
+    // falling
+    const bottom = obj.y + obj.h;
+    const left = obj.x + 4;
+    const right = obj.x + obj.w - 4;
+    if (isSolidTile(getTileAtPixel(left, bottom)) || isSolidTile(getTileAtPixel(right, bottom))) {
+      obj.y = Math.floor(bottom / TILE) * TILE - obj.h - 0.01;
+      obj.vy = 0;
+      obj.onGround = true;
     }
-
-    function rectHit(px, py, pw, ph, x, y, w, h) {
-      return (
-        px < x + w &&
-        px + pw > x &&
-        py < y + h &&
-        py + ph > y
-      );
+  } else if (obj.vy < 0) {
+    // jumping up
+    const top = obj.y;
+    const left = obj.x + 4;
+    const right = obj.x + obj.w - 4;
+    if (isSolidTile(getTileAtPixel(left, top)) || isSolidTile(getTileAtPixel(right, top))) {
+      obj.y = Math.floor(top / TILE + 1) * TILE + 0.01;
+      obj.vy = 0;
     }
+  }
+}
 
-    // --- Update logic ---
-    function update() {
-      if (!running) return;
+// ====== UPDATE ======
+function update() {
+  // horizontal input
+  if (keys["ArrowLeft"]) {
+    player.vx = -player.speed;
+  } else if (keys["ArrowRight"]) {
+    player.vx = player.speed;
+  } else {
+    player.vx *= FRICTION;
+    if (Math.abs(player.vx) < 0.05) player.vx = 0;
+  }
 
-      // movement
-      let currentSpeed =
-        keys["Space"] || keys["Spacebar"] ? player.dashSpeed : player.speed;
+  // jump
+  if ((keys["ArrowUp"] || keys["Space"]) && player.onGround) {
+    player.vy = player.jumpForce;
+    player.onGround = false;
+  }
 
-      if (keys["ArrowLeft"]) player.x -= currentSpeed;
-      if (keys["ArrowRight"]) player.x += currentSpeed;
+  // gravity
+  player.vy += GRAVITY;
+  if (player.vy > 10) player.vy = 10;
 
-      if (player.x < 0) player.x = 0;
-      if (player.x + player.w > canvas.width)
-        player.x = canvas.width - player.w;
+  resolveCollisions(player);
+}
 
-      // random spawns
-      if (Math.random() < 0.04) spawnBeat();
-      if (Math.random() < 0.03) spawnEnemy();
+// ====== DRAW MAP & PLAYER ======
+function drawMap() {
+  for (let y = 0; y < LEVEL_ROWS; y++) {
+    for (let x = 0; x < LEVEL_COLS; x++) {
+      const code = map[y][x];
+      const px = x * TILE;
+      const py = y * TILE;
 
-      // update beats
-      for (let i = beats.length - 1; i >= 0; i--) {
-        const b = beats[i];
-        b.y += b.speed;
-
-        if (b.y > canvas.height + 20) {
-          beats.splice(i, 1);
-          continue;
-        }
-
-        if (rectHit(player.x, player.y, player.w, player.h, b.x - b.r, b.y - b.r, b.r * 2, b.r * 2)) {
-          beats.splice(i, 1);
-          score += 10;
-          scoreEl.textContent = score;
-          msg.textContent = "Nice beat!";
-          setTimeout(() => { if (msg.textContent === "Nice beat!") msg.textContent = ""; }, 400);
-        }
-      }
-
-      // update enemies
-      for (let i = enemies.length - 1; i >= 0; i--) {
-        const e = enemies[i];
-        e.y += e.speed;
-
-        if (e.y > canvas.height + 24) {
-          enemies.splice(i, 1);
-          continue;
-        }
-
-        if (rectHit(player.x, player.y, player.w, player.h, e.x, e.y, e.size, e.size)) {
-          gameOver();
-          return;
-        }
-      }
-    }
-
-    function gameOver() {
-      running = false;
-      msg.textContent = "Neighbours complained! Game Over.";
-      if (score > best) {
-        best = score;
-        bestEl.textContent = best;
-        localStorage.setItem("rr_best", best);
-        msg.textContent += " New High Score!";
-      }
-    }
-
-    // --- Drawing ---
-    function drawBackground() {
-      // simple vertical light beams
-      const barWidth = 40;
-      for (let x = 0; x < canvas.width; x += barWidth) {
-        ctx.fillStyle = "rgba(255,255,255,0.03)";
-        ctx.fillRect(x, 0, barWidth / 2, canvas.height);
-      }
-    }
-
-    function drawPlayer() {
-      ctx.fillStyle = "#00ffee";
-      ctx.fillRect(player.x, player.y, player.w, player.h);
-      // simple "head"
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(player.x + 10, player.y - 8, 20, 8);
-    }
-
-    function drawBeats() {
-      ctx.fillStyle = "#ff00ff";
-      beats.forEach((b) => {
+      if (code === 1) {
+        // brick wall
+        ctx.fillStyle = "#5c3b2b";
+        ctx.fillRect(px, py, TILE, TILE);
+        ctx.strokeStyle = "#3c261b";
+        ctx.strokeRect(px, py, TILE, TILE);
+      } else if (code === 2) {
+        // floor
+        ctx.fillStyle = "#444";
+        ctx.fillRect(px, py, TILE, TILE);
+        ctx.fillStyle = "#a33";
+        ctx.fillRect(px, py, TILE, 6);
+      } else if (code === 3) {
+        // door
+        ctx.fillStyle = "#8b5a2b";
+        ctx.fillRect(px + 4, py + 8, TILE - 8, TILE);
+        ctx.fillStyle = "#cfa";
+        ctx.fillRect(px + TILE - 12, py + 20, 6, 4); // handle
+      } else if (code === 4) {
+        // window
+        ctx.fillStyle = "#222";
+        ctx.fillRect(px + 4, py + 4, TILE - 8, TILE - 8);
+        ctx.fillStyle = "#88c";
+        ctx.fillRect(px + 6, py + 6, TILE - 12, TILE - 12);
+        ctx.strokeStyle = "#222";
         ctx.beginPath();
-        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
-        ctx.fill();
-      });
-    }
-
-    function drawEnemies() {
-      enemies.forEach((e) => {
-        ctx.fillStyle = "#ff4444";
-        ctx.fillRect(e.x, e.y, e.size, e.size);
-
-        // angry eyebrows
-        ctx.strokeStyle = "#000";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(e.x + 4, e.y + 8);
-        ctx.lineTo(e.x + 10, e.y + 4);
-        ctx.moveTo(e.x + e.size - 4, e.y + 8);
-        ctx.lineTo(e.x + e.size - 10, e.y + 4);
+        ctx.moveTo(px + 4, py + TILE / 2);
+        ctx.lineTo(px + TILE - 4, py + TILE / 2);
+        ctx.moveTo(px + TILE / 2, py + 4);
+        ctx.lineTo(px + TILE / 2, py + TILE - 4);
         ctx.stroke();
-      });
+      } else {
+        // empty interior wall
+        ctx.fillStyle = "#d6d6d6";
+        ctx.fillRect(px, py, TILE, TILE);
+      }
     }
+  }
 
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawBackground();
-      drawBeats();
-      drawEnemies();
-      drawPlayer();
-    }
+  // black outside walls
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, canvas.width, TILE); // top strip
+  ctx.fillRect(0, canvas.height - TILE, canvas.width, TILE); // bottom strip
+}
 
-    // --- Main loop ---
-    function loop() {
-      update();
-      draw();
-      requestAnimationFrame(loop);
-    }
+// simple pixel hero
+function drawPlayer() {
+  const p = player;
+  // body
+  ctx.fillStyle = "#f4d03f";
+  ctx.fillRect(p.x, p.y, p.w, p.h - 10);
+  // legs
+  ctx.fillStyle = "#2e4053";
+  ctx.fillRect(p.x, p.y + p.h - 10, p.w, 10);
+  // head
+  ctx.fillStyle = "#f5cba7";
+  ctx.fillRect(p.x + 2, p.y - 10, p.w - 4, 10);
+  // hat
+  ctx.fillStyle = "#b03a2e";
+  ctx.fillRect(p.x + 1, p.y - 14, p.w - 2, 4);
+  ctx.fillRect(p.x - 2, p.y - 10, p.w + 4, 3);
+}
 
-    // start the loop (game waits until Start Game is pressed)
-    loop();
-  </script>
+// ====== MAIN LOOP ======
+function loop() {
+  update();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawMap();
+  drawPlayer();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
 </body>
 </html>
