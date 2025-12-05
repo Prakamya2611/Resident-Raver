@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Resident Raver</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    body {
+      background: #0b0b16;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+
+    #gameContainer {
+      background: #111325;
+      border-radius: 12px;
+      box-shadow: 0 0 25px rgba(0, 0, 0, 0.6);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #title {
+      font-size: 24px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      text-align: center;
+    }
+
+    #subtitle {
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+
+    canvas {
+      background: radial-gradient(circle at top, #3a1f5d 0, #050510 60%);
+      border: 2px solid #3f3fff;
+      border-radius: 8px;
+      display: block;
+    }
+
+    #ui {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+    }
+
+    #leftInfo {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    #controls {
+      font-size: 11px;
+      color: #aaa;
+    }
+
+    #startButton {
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: none;
+      background: linear-gradient(90deg, #ff0077, #ffea00);
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(255, 0, 150, 0.6);
+      transition: transform 0.1s ease, box-shadow 0.1s ease, opacity 0.2s;
+    }
+
+    #startButton:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 0 18px rgba(255, 0, 150, 0.8);
+    }
+
+    #startButton:active {
+      transform: translateY(1px);
+      box-shadow: 0 0 5px rgba(255, 0, 150, 0.5);
+    }
+
+    #message {
+      font-size: 12px;
+      text-align: right;
+      min-height: 16px;
+      color: #ffea00;
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <div id="title">Resident Raver</div>
+    <div id="subtitle">Collect beats, avoid angry residents!</div>
+
+    <!-- Game area -->
+    <canvas id="gameCanvas" width="480" height="640"></canvas>
+
+    <!-- UI section -->
+    <div id="ui">
+      <div id="leftInfo">
+        <div>Score: <span id="score">0</span></div>
+        <div id="controls">Controls: ← → to move, Space to dash</div>
+      </div>
+
+      <button id="startButton">Start Rave</button>
+
+      <div id="message"></div>
+    </div>
+  </div>
+
+  <script>
+    // ====== BASIC SETUP ======
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const scoreEl = document.getElementById("score");
+    const startButton = document.getElementById("startButton");
+    const messageEl = document.getElementById("message");
+
+    const WIDTH = canvas.width;
+    const HEIGHT = canvas.height;
+
+    // ====== GAME OBJECTS ======
+    const player = {
+      x: WIDTH / 2 - 20,
+      y: HEIGHT - 60,
+      width: 40,
+      height: 40,
+      speed: 260, // pixels per second
+      dashSpeed: 420,
+      color: "#00ffea",
+      isDashing: false,
+      dashTime: 0,
+      dashDuration: 0.15 // seconds
+    };
+
+    // arrays for objects
+    let beats = [];      // good items to collect
+    let neighbours = []; // bad items to avoid
+
+    // ====== GAME STATE ======
+    let score = 0;
+    let lastTime = 0;
+    let gameRunning = false;
+    let gameOver = false;
+
+    // spawn timers
+    let beatTimer = 0;
+    let neighbourTimer = 0;
+
+    const beatSpawnInterval = 0.7;      // seconds
+    const neighbourSpawnInterval = 1.4; // seconds
+
+    // input
+    const keys = {
+      ArrowLeft: false,
+      ArrowRight: false,
+      Space: false
+    };
+
+    // ====== INPUT HANDLING ======
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "ArrowLeft" || e.code === "ArrowRight" || e.code === "Space") {
+        e.preventDefault();
+      }
+      if (e.code in keys) {
+        keys[e.code] = true;
+      }
+    });
+
+    window.addEventListener("keyup", (e) => {
+      if (e.code in keys) {
+        keys[e.code] = false;
+      }
+    });
+
+    // ====== HELPER FUNCTIONS ======
+    function resetGame() {
+      score = 0;
+      beats = [];
+      neighbours = [];
+      player.x = WIDTH / 2 - player.width / 2;
+      player.y = HEIGHT - 60;
+      player.isDashing = false;
+      player.dashTime = 0;
+      beatTimer = 0;
+      neighbourTimer = 0;
+      gameOver = false;
+      gameRunning = true;
+      scoreEl.textContent = "0";
+      messageEl.textContent = "";
+    }
+
+    function randomX(width) {
+      return Math.random() * (WIDTH - width);
+    }
+
+    function spawnBeat() {
+      const size = 18;
+      beats.push({
+        x: randomX(size),
+        y: -size,
+        size: size,
+        speed: 110 + Math.random() * 90,
+        color: "#ff00ff"
+      });
+    }
+
+    function spawnNeighbour() {
+      const size = 26;
+      neighbours.push({
+        x: randomX(size),
+        y: -size,
+        size: size,
+        speed: 140 + Math.random() * 120,
+        color: "#ff4444"
+      });
+    }
+
+    function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+      return ax < bx + bw &&
+             ax + aw > bx &&
+             ay < by + bh &&
+             ay + ah > by;
+    }
+
+    function endGame() {
+      gameOver = true;
+      gameRunning = false;
+      messageEl.textContent = "The residents complained! Click Start to try again.";
+    }
+
+    // ====== UPDATE LOGIC ======
+    function update(dt) {
+      if (!gameRunning) return;
+
+      // --- Player movement ---
+      let currentSpeed = player.isDashing ? player.dashSpeed : player.speed;
+
+      if (keys.ArrowLeft) {
+        player.x -= currentSpeed * dt;
+      }
+      if (keys.ArrowRight) {
+        player.x += currentSpeed * dt;
+      }
+
+      // stay inside bounds
+      if (player.x < 0) player.x = 0;
+      if (player.x + player.width > WIDTH) player.x = WIDTH - player.width;
+
+      // --- Dash handling (Space) ---
+      if (keys.Space && !player.isDashing) {
+        player.isDashing = true;
+        player.dashTime = 0;
+      }
+
+      if (player.isDashing) {
+        player.dashTime += dt;
+        if (player.dashTime >= player.dashDuration) {
+          player.isDashing = false;
+        }
+      }
+
+      // --- Spawning beats & neighbours ---
+      beatTimer += dt;
+      if (beatTimer >= beatSpawnInterval) {
+        beatTimer = 0;
+        spawnBeat();
+      }
+
+      neighbourTimer += dt;
+      if (neighbourTimer >= neighbourSpawnInterval) {
+        neighbourTimer = 0;
+        spawnNeighbour();
+      }
+
+      // --- Update beats ---
+      for (let i = beats.length - 1; i >= 0; i--) {
+        const b = beats[i];
+        b.y += b.speed * dt;
+
+        // collected?
+        if (rectsOverlap(player.x, player.y, player.width, player.height,
+                         b.x, b.y, b.size, b.size)) {
+          beats.splice(i, 1);
+          score += 10;
+          scoreEl.textContent = score;
+
+          // small "combo" message
+          messageEl.textContent = "Nice beat!";
+          continue;
+        }
+
+        // remove if off-screen
+        if (b.y > HEIGHT + 30) {
+          beats.splice(i, 1);
+        }
+      }
+
+      // --- Update neighbours ---
+      for (let i = neighbours.length - 1; i >= 0; i--) {
+        const n = neighbours[i];
+        n.y += n.speed * dt;
+
+        // collision: game over
+        if (rectsOverlap(player.x, player.y, player.width, player.height,
+                         n.x, n.y, n.size, n.size)) {
+          endGame();
+          return;
+        }
+
+        // remove if off-screen
+        if (n.y > HEIGHT + 30) {
+          neighbours.splice(i, 1);
+        }
+      }
+    }
+
+    // ====== DRAWING ======
+    function drawPlayer() {
+      ctx.save();
+      ctx.fillStyle = player.color;
+
+      // pulsing glow for "raver" feel
+      const glowSize = 10 + (player.isDashing ? 10 : 0);
+      const gradient = ctx.createRadialGradient(
+        player.x + player.width / 2,
+        player.y + player.height / 2,
+        4,
+        player.x + player.width / 2,
+        player.y + player.height / 2,
+        glowSize
+      );
+      gradient.addColorStop(0, "rgba(0,255,234,1)");
+      gradient.addColorStop(1, "rgba(0,255,234,0)");
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(player.x + player.width / 2, player.y + player.height / 2, glowSize, 0, Math.PI * 2);
+      ctx.fill();
+
+      // main body
+      ctx.fillStyle = "#00ffee";
+      ctx.fillRect(player.x, player.y, player.width, player.height);
+
+      // simple "head"
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(player.x + 10, player.y - 8, 20, 8);
+      ctx.restore();
+    }
+
+    function drawBeats() {
+      beats.forEach((b) => {
+        ctx.save();
+        ctx.fillStyle = b.color;
+        ctx.beginPath();
+        ctx.arc(b.x + b.size / 2, b.y + b.size / 2, b.size / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+    }
+
+    function drawNeighbours() {
+      neighbours.forEach((n) => {
+        ctx.save();
+        ctx.fillStyle = n.color;
+        ctx.fillRect(n.x, n.y, n.size, n.size);
+
+        // angry eyebrows 🙂
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(n.x + 4, n.y + 8);
+        ctx.lineTo(n.x + 10, n.y + 4);
+        ctx.moveTo(n.x + n.size - 4, n.y + 8);
+        ctx.lineTo(n.x + n.size - 10, n.y + 4);
+        ctx.stroke();
+        ctx.restore();
+      });
+    }
+
+    function drawBackgroundEffects(time) {
+      // faint vertical light beams like a club
+      const barWidth = 40;
+      const offset = (time * 0.05) % barWidth;
+      for (let x = -barWidth; x < WIDTH + barWidth; x += barWidth) {
+        ctx.fillStyle = "rgba(255,255,255,0.03)";
+        ctx.fillRect(x + offset, 0, barWidth / 2, HEIGHT);
+      }
+    }
+
+    function render(timestamp) {
+      const t = timestamp / 1000; // convert ms to seconds
+      const dt = lastTime ? t - lastTime : 0;
+      lastTime = t;
+
+      // clear
+      ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+      // background
+      drawBackgroundEffects(timestamp);
+
+      // update
+      if (!gameOver) {
+        update(dt);
+      }
+
+      // draw entities
+      drawBeats();
+      drawNeighbours();
+      drawPlayer();
+
+      requestAnimationFrame(render);
+    }
+
+    // ====== START BUTTON ======
+    startButton.addEventListener("click", () => {
+      resetGame();
+    });
+
+    // start the render loop (game is idle until resetGame sets gameRunning = true)
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>
