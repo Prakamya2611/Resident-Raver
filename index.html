@@ -1,11 +1,245 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8">
-    <title>Test Page</title>
-  </head>
-  <body style="background: black; color: white; text-align: center;">
-    <h1>IF YOU SEE THIS, INDEX.HTML WORKS 🎉</h1>
-    <p>Repo: Resident-Raver</p>
-  </body>
-</html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Resident Raver</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    body {
+      background: #05030f;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+
+    #gameBox {
+      text-align: center;
+    }
+
+    h1 {
+      margin-bottom: 4px;
+    }
+
+    #subtitle {
+      font-size: 13px;
+      margin-bottom: 8px;
+      color: #ccc;
+    }
+
+    canvas {
+      background: radial-gradient(circle at top, #3a1f5d 0, #050510 60%);
+      border: 3px solid #3f3fff;
+      border-radius: 10px;
+      display: block;
+      margin: 0 auto 8px auto;
+    }
+
+    #hud {
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    #controls {
+      font-size: 12px;
+      color: #bbb;
+      margin-top: 4px;
+    }
+
+    #startBtn {
+      background: linear-gradient(90deg, #ff0077, #ffe600);
+      padding: 8px 20px;
+      border: none;
+      border-radius: 20px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-bottom: 4px;
+    }
+
+    #msg {
+      font-size: 12px;
+      color: #ffea00;
+      min-height: 16px;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="gameBox">
+    <h1>Resident Raver</h1>
+    <div id="subtitle">Collect beats and avoid angry neighbours!</div>
+
+    <canvas id="game" width="480" height="640"></canvas>
+
+    <div id="hud">
+      Score: <span id="score">0</span>
+      &nbsp; | &nbsp;
+      Best: <span id="best">0</span>
+    </div>
+
+    <button id="startBtn">Start Game</button>
+    <div id="controls">Controls: ← → arrows, SPACE = Dash</div>
+    <div id="msg"></div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    const scoreEl = document.getElementById("score");
+    const bestEl = document.getElementById("best");
+    const startBtn = document.getElementById("startBtn");
+    const msg = document.getElementById("msg");
+
+    // --- Player setup ---
+    const player = {
+      x: canvas.width / 2 - 20,
+      y: canvas.height - 70,
+      w: 40,
+      h: 40,
+      speed: 4,
+      dashSpeed: 8
+    };
+
+    let beats = [];    // good items
+    let enemies = [];  // bad items
+    let keys = {};
+    let score = 0;
+    let best = Number(localStorage.getItem("rr_best") || 0);
+    bestEl.textContent = best;
+
+    let running = false;
+
+    // --- Input handling ---
+    document.addEventListener("keydown", (e) => {
+      if (["ArrowLeft", "ArrowRight", "Space"].includes(e.code)) {
+        e.preventDefault();
+      }
+      keys[e.code] = true;
+    });
+
+    document.addEventListener("keyup", (e) => {
+      keys[e.code] = false;
+    });
+
+    // --- Game control ---
+    startBtn.addEventListener("click", () => {
+      startGame();
+    });
+
+    function startGame() {
+      score = 0;
+      beats = [];
+      enemies = [];
+      player.x = canvas.width / 2 - player.w / 2;
+      player.y = canvas.height - 70;
+      running = true;
+      scoreEl.textContent = score;
+      msg.textContent = "";
+    }
+
+    // --- Helpers ---
+    function spawnBeat() {
+      beats.push({
+        x: Math.random() * (canvas.width - 20),
+        y: -20,
+        r: 10,
+        speed: 2 + Math.random() * 2
+      });
+    }
+
+    function spawnEnemy() {
+      enemies.push({
+        x: Math.random() * (canvas.width - 24),
+        y: -24,
+        size: 24,
+        speed: 2.5 + Math.random() * 2
+      });
+    }
+
+    function rectHit(px, py, pw, ph, x, y, w, h) {
+      return (
+        px < x + w &&
+        px + pw > x &&
+        py < y + h &&
+        py + ph > y
+      );
+    }
+
+    // --- Update logic ---
+    function update() {
+      if (!running) return;
+
+      // movement
+      let currentSpeed =
+        keys["Space"] || keys["Spacebar"] ? player.dashSpeed : player.speed;
+
+      if (keys["ArrowLeft"]) player.x -= currentSpeed;
+      if (keys["ArrowRight"]) player.x += currentSpeed;
+
+      if (player.x < 0) player.x = 0;
+      if (player.x + player.w > canvas.width)
+        player.x = canvas.width - player.w;
+
+      // random spawns
+      if (Math.random() < 0.04) spawnBeat();
+      if (Math.random() < 0.03) spawnEnemy();
+
+      // update beats
+      for (let i = beats.length - 1; i >= 0; i--) {
+        const b = beats[i];
+        b.y += b.speed;
+
+        if (b.y > canvas.height + 20) {
+          beats.splice(i, 1);
+          continue;
+        }
+
+        if (rectHit(player.x, player.y, player.w, player.h, b.x - b.r, b.y - b.r, b.r * 2, b.r * 2)) {
+          beats.splice(i, 1);
+          score += 10;
+          scoreEl.textContent = score;
+          msg.textContent = "Nice beat!";
+          setTimeout(() => { if (msg.textContent === "Nice beat!") msg.textContent = ""; }, 400);
+        }
+      }
+
+      // update enemies
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        const e = enemies[i];
+        e.y += e.speed;
+
+        if (e.y > canvas.height + 24) {
+          enemies.splice(i, 1);
+          continue;
+        }
+
+        if (rectHit(player.x, player.y, player.w, player.h, e.x, e.y, e.size, e.size)) {
+          gameOver();
+          return;
+        }
+      }
+    }
+
+    function gameOver() {
+      running = false;
+      msg.textContent = "Neighbours complained! Game Over.";
+      if (score > best) {
+        best = score;
+        bestEl.textContent = best;
+        localStorage.setItem("rr_best", best);
+        msg.textContent += " New High Score!";
+      }
+    }
+
+    // --- Drawing ---
+    function drawBackground() {
+      // simple vertical light beams
