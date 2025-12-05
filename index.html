@@ -243,3 +243,64 @@
     // --- Drawing ---
     function drawBackground() {
       // simple vertical light beams
+      const barWidth = 40;
+      for (let x = 0; x < canvas.width; x += barWidth) {
+        ctx.fillStyle = "rgba(255,255,255,0.03)";
+        ctx.fillRect(x, 0, barWidth / 2, canvas.height);
+      }
+    }
+
+    function drawPlayer() {
+      ctx.fillStyle = "#00ffee";
+      ctx.fillRect(player.x, player.y, player.w, player.h);
+      // simple "head"
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(player.x + 10, player.y - 8, 20, 8);
+    }
+
+    function drawBeats() {
+      ctx.fillStyle = "#ff00ff";
+      beats.forEach((b) => {
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function drawEnemies() {
+      enemies.forEach((e) => {
+        ctx.fillStyle = "#ff4444";
+        ctx.fillRect(e.x, e.y, e.size, e.size);
+
+        // angry eyebrows
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(e.x + 4, e.y + 8);
+        ctx.lineTo(e.x + 10, e.y + 4);
+        ctx.moveTo(e.x + e.size - 4, e.y + 8);
+        ctx.lineTo(e.x + e.size - 10, e.y + 4);
+        ctx.stroke();
+      });
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawBackground();
+      drawBeats();
+      drawEnemies();
+      drawPlayer();
+    }
+
+    // --- Main loop ---
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    // start the loop (game waits until Start Game is pressed)
+    loop();
+  </script>
+</body>
+</html>
